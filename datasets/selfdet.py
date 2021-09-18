@@ -16,6 +16,7 @@ from PIL import ImageFilter
 import random
 import cv2
 from util.box_ops import crop_bbox
+import pickle
 
 
 def get_random_patch_from_img(img, min_pixel=8):
@@ -59,6 +60,11 @@ class SelfDet(Dataset):
                     self.files.append(path)
                 else:
                     continue
+        # Load mdetr boxes
+        mdetr_dets_file_path = f"{root}_mdetr_dets.pkl"
+        self.mdetr_dets = {}
+        with open(mdetr_dets_file_path, "rb") as f:
+            self.mdetr_dets = pickle.load(f)
         print(f'num of files:{len(self.files)}')
 
     def __len__(self):
@@ -70,8 +76,9 @@ class SelfDet(Dataset):
         w, h = img.size
 
         if self.strategy == 'topk':
-            boxes = self.load_from_cache(item, img, h, w)
+            boxes, _ = self.mdetr_dets[f"{os.path.basename(img_path).split('.')[0]}"]
             boxes = boxes[:self.max_prop]
+            boxes = boxes * np.array([w, h, w, h])
         elif self.strategy == 'mc':
             boxes = self.load_from_cache(item, img, h, w)
             boxes_indicators = np.where(np.random.binomial(1, p=self.dist2[:len(boxes)]))[0]
@@ -96,7 +103,7 @@ class SelfDet(Dataset):
         patches = [img.crop([b[0], b[1], b[2], b[3]]) for b in boxes]
         target = {'orig_size': torch.as_tensor([int(h), int(w)]), 'size': torch.as_tensor([int(h), int(w)])}
         target['patches'] = torch.stack([self.query_transform(p) for p in patches], dim=0)
-        target['boxes'] = torch.tensor(boxes)
+        target['boxes'] = torch.tensor(boxes, dtype=torch.float32)
         target['iscrowd'] = torch.zeros(len(target['boxes']))
         target['area'] = target['boxes'][..., 2] * target['boxes'][..., 3]
         target['labels'] = torch.ones(len(target['boxes'])).long()

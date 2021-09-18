@@ -371,7 +371,7 @@ def get_datasets(args):
         dataset_val = build_dataset(image_set='val', args=args)
     elif args.dataset == 'imagenet100':
         dataset_train = build_selfdet('train', args=args, p=os.path.join(args.imagenet100_path, 'train'))
-        dataset_val = build_dataset(image_set='val', args=args)
+        dataset_val = None
     elif args.dataset == 'voc':
         dataset_train = VOCDetection(args.voc_path, ["2007", "2012"], image_sets=['trainval', 'trainval'],
                                      transforms=make_coco_transforms('train'))
