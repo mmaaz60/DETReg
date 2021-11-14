@@ -42,7 +42,7 @@ class SelfDet(Dataset):
     """
 
     def __init__(self, root, detection_transform, query_transform, cache_dir=None, max_prop=30, strategy='topk',
-                 pseudo_labels='mdetr'):
+                 pseudo_labels=''):
         super(SelfDet, self).__init__()
         self.strategy = strategy
         self.cache_dir = cache_dir
@@ -62,12 +62,12 @@ class SelfDet(Dataset):
                     self.files.append(path)
                 else:
                     continue
-        if self.pseudo_labels == 'mdetr':
-            # Load mdetr boxes
-            mdetr_dets_file_path = f"{root}_mdetr_dets.pkl"
-            self.mdetr_dets = {}
-            with open(mdetr_dets_file_path, "rb") as f:
-                self.mdetr_dets = pickle.load(f)
+        if self.pseudo_labels in ['mdetr', 'mdef_detr']:
+            # Load mdetr or mdef_detr boxes
+            pseudo_dets_dets_file_path = f"{root}_{self.pseudo_labels}_dets.pkl"
+            self.pseudo_dets = {}
+            with open(pseudo_dets_dets_file_path, "rb") as f:
+                self.pseudo_dets = pickle.load(f)
         print(f'num of files:{len(self.files)}')
 
     def __len__(self):
@@ -79,8 +79,8 @@ class SelfDet(Dataset):
         w, h = img.size
 
         if self.strategy == 'topk':
-            if self.pseudo_labels == 'mdetr':
-                boxes, _ = self.mdetr_dets[f"{os.path.basename(img_path).split('.')[0]}"]
+            if self.pseudo_labels in ['mdetr', 'mdef_detr']:
+                boxes, _ = self.pseudo_dets[f"{os.path.basename(img_path).split('.')[0]}"]
                 boxes = boxes[:self.max_prop]
                 boxes = boxes * np.array([w, h, w, h])
             else:  # selective search

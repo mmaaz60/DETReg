@@ -141,8 +141,8 @@ def get_args_parser():
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
     parser.add_argument('--object_embedding_loss', default=False, action='store_true', help='whether to use this loss')
     parser.add_argument('--pseudo_labels', default='ss', type=str, help="Type of method for region proposals, default "
-                                                                        "uses selective search, specify 'mdetr' to use"
-                                                                        "mdetr pseudo labels")
+                                                                        "uses selective search, "
+                                                                        "other options: ['mdetr','mdef_detr']")
 
     return parser
 
@@ -377,7 +377,7 @@ def get_datasets(args):
         dataset_val = build_dataset(image_set='val', args=args)
     elif args.dataset == 'imagenet100':
         dataset_train = build_selfdet('train', args=args, p=os.path.join(args.imagenet100_path, 'train'))
-        dataset_val = None
+        build_dataset(image_set='val', args=args)
     elif args.dataset == 'voc':
         dataset_train = VOCDetection(args.voc_path, ["2007", "2012"], image_sets=['trainval', 'trainval'],
                                      transforms=make_coco_transforms('train'))
