@@ -154,6 +154,19 @@ Training takes around 1.5 days with 8 NVIDIA V100 GPUs, you can download a pretr
 
 After pretraining, a checkpoint is saved in ```exps/DETReg_top30_in100/checkpoint.pth```. To fine tune it over different coco settings use the following commands:
 
+### Pretraining on ImageNet with pseudo labels from MDETR / MDef-DETR proposals
+
+[comment]: <> (The MDETR proposals generated on ImageNet100 is saved in: )
+The command for pretraining DETReg on 8 GPUs on ImageNet100 is as following:
+- On MDef-DETR:
+```bash
+GPUS_PER_NODE=8 ./tools/run_dist_launch.sh 8 ./configs/DETReg_top30_in100.sh --pseudo_labels mdef_detr --batch_size 24 --num_workers 8
+```
+- On MDETR:
+```bash
+GPUS_PER_NODE=8 ./tools/run_dist_launch.sh 8 ./configs/DETReg_top30_in100.sh --pseudo_labels mdetr --batch_size 24 --num_workers 8
+```
+
 ### Finetuning on MSCoco
 
 Fine tuning on full COCO (should take 2 days with 8 NVIDIA V100 GPUs):
@@ -189,7 +202,6 @@ GPUS_PER_NODE=2 ./tools/run_dist_launch.sh 2 ./configs/DETReg_fine_tune_10pct_pa
 ```
 
 
-
 ### Evaluation
 
 To evaluate a finetuned model, use the following command from the project basedir:
@@ -203,6 +215,25 @@ To evaluate a finetuned model, use the following command from the project basedi
 - [Pretrained ImageNet weights](https://github.com/amirbar/DETReg/releases/download/1.0.0/checkpoint_imagenet.pth) 
 - [Finetuned COCO weights](https://github.com/amirbar/DETReg/releases/download/1.0.0/full_coco_finetune.pth)
 
+### Using hubconfig for evaluation:
+1. Pretrained model with MDef-DETR proposals:
+```bash
+checkpoints_path = "./saved_models/DETReg_top30_in100_mdef_detr.pth"
+model = deformable_detr_resnet50(pretrained=False, return_postprocessor=False, num_classes=91,
+                                 object_embedding_loss=True, checkpoints_path=checkpoints_path)
+```
+2. Fine tune on 10% of Pascal:
+```bash
+checkpoints_path = "./saved_models/DETReg_fine_tune_10pct_pascal_mdef_detr.pth"
+model = deformable_detr_resnet50(pretrained=False, return_postprocessor=False, num_classes=21,
+                                 object_embedding_loss=False, checkpoints_path=checkpoints_path)
+```
+3. Fine tune on full of Pascal:
+```bash
+checkpoints_path = "./saved_models/DETReg_fine_tune_full_pascal_mdef_detr.pth"
+model = deformable_detr_resnet50(pretrained=False, return_postprocessor=False, num_classes=21,
+                                 object_embedding_loss=False, checkpoints_path=checkpoints_path)
+```
 
 ## Citation
 If you found this code helpful, feel free to cite our work: 
