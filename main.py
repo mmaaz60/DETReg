@@ -140,6 +140,9 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
     parser.add_argument('--object_embedding_loss', default=False, action='store_true', help='whether to use this loss')
+    parser.add_argument('--pseudo_labels', default='ss', type=str, help="Type of method for region proposals, default "
+                                                                        "uses selective search, specify 'mdetr' to use"
+                                                                        "mdetr pseudo labels")
 
     return parser
 

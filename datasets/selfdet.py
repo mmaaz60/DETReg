@@ -41,7 +41,8 @@ class SelfDet(Dataset):
     The format of the bounding box is same to COCO.
     """
 
-    def __init__(self, root, detection_transform, query_transform, cache_dir=None, max_prop=30, strategy='topk'):
+    def __init__(self, root, detection_transform, query_transform, cache_dir=None, max_prop=30, strategy='topk',
+                 pseudo_labels='mdetr'):
         super(SelfDet, self).__init__()
         self.strategy = strategy
         self.cache_dir = cache_dir
@@ -51,6 +52,7 @@ class SelfDet(Dataset):
         self.detection_transform = detection_transform
         self.files = []
         self.dist2 = -np.log(np.arange(1, 301) / 301) / 10
+        self.pseudo_labels = pseudo_labels
         max_prob = (-np.log(1 / 1001)) ** 4
 
         for (troot, _, files) in os.walk(root, followlinks=True):
@@ -60,11 +62,12 @@ class SelfDet(Dataset):
                     self.files.append(path)
                 else:
                     continue
-        # Load mdetr boxes
-        mdetr_dets_file_path = f"{root}_mdetr_dets.pkl"
-        self.mdetr_dets = {}
-        with open(mdetr_dets_file_path, "rb") as f:
-            self.mdetr_dets = pickle.load(f)
+        if self.pseudo_labels == 'mdetr':
+            # Load mdetr boxes
+            mdetr_dets_file_path = f"{root}_mdetr_dets.pkl"
+            self.mdetr_dets = {}
+            with open(mdetr_dets_file_path, "rb") as f:
+                self.mdetr_dets = pickle.load(f)
         print(f'num of files:{len(self.files)}')
 
     def __len__(self):
@@ -76,9 +79,13 @@ class SelfDet(Dataset):
         w, h = img.size
 
         if self.strategy == 'topk':
-            boxes, _ = self.mdetr_dets[f"{os.path.basename(img_path).split('.')[0]}"]
-            boxes = boxes[:self.max_prop]
-            boxes = boxes * np.array([w, h, w, h])
+            if self.pseudo_labels == 'mdetr':
+                boxes, _ = self.mdetr_dets[f"{os.path.basename(img_path).split('.')[0]}"]
+                boxes = boxes[:self.max_prop]
+                boxes = boxes * np.array([w, h, w, h])
+            else:  # selective search
+                boxes = self.load_from_cache(item, img, h, w)
+                boxes = boxes[:self.max_prop]
         elif self.strategy == 'mc':
             boxes = self.load_from_cache(item, img, h, w)
             boxes_indicators = np.where(np.random.binomial(1, p=self.dist2[:len(boxes)]))[0]
@@ -215,5 +222,6 @@ def get_query_transforms(image_set):
 
 
 def build_selfdet(image_set, args, p):
-    return SelfDet(p, detection_transform=make_self_det_transforms(image_set), query_transform=get_query_transforms(image_set), cache_dir=args.cache_path,
-                   max_prop=args.max_prop, strategy=args.strategy)
+    return SelfDet(p, detection_transform=make_self_det_transforms(image_set),
+                   query_transform=get_query_transforms(image_set), cache_dir=args.cache_path, max_prop=args.max_prop,
+                   strategy=args.strategy, pseudo_labels=args.pseudo_labels)
