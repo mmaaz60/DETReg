@@ -21,7 +21,7 @@ def _make_deformable_detr(backbone_name: str, dilation=False, num_classes=91, ob
     return deformable_detr
 
 
-def deformable_detr_resnet50(pretrained=False, return_postprocessor=False, num_classes=91, object_embedding_loss=False,
+def detreg_resnet50(pretrained=False, return_postprocessor=False, num_classes=91, object_embedding_loss=False,
                              checkpoints_path=""):
     """
     Deformable DETR R50 with 6 encoder and 6 decoder layers.

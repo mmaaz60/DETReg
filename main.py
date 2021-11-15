@@ -29,8 +29,6 @@ from datasets.torchvision_datasets.voc import VOCDetection
 from engine import evaluate, train_one_epoch, viz
 from models import build_model
 from models.backbone import build_swav_backbone, build_swav_backbone_old
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
 
 PRETRAINING_DATASETS = ['imagenet', 'imagenet100', 'coco_pretrain']
 
@@ -180,13 +178,13 @@ def main(args):
     if args.distributed:
         if args.cache_mode:
             sampler_train = samplers.NodeDistributedSampler(dataset_train)
-            # sampler_val = samplers.NodeDistributedSampler(dataset_val, shuffle=False)
+            sampler_val = samplers.NodeDistributedSampler(dataset_val, shuffle=False)
         else:
             sampler_train = samplers.DistributedSampler(dataset_train)
-            # sampler_val = samplers.DistributedSampler(dataset_val, shuffle=False)
+            sampler_val = samplers.DistributedSampler(dataset_val, shuffle=False)
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        # sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
     coco_evaluator = None
     batch_sampler_train = torch.utils.data.BatchSampler(
         sampler_train, args.batch_size, drop_last=True)
@@ -194,9 +192,9 @@ def main(args):
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
                                    collate_fn=utils.collate_fn, num_workers=args.num_workers,
                                    pin_memory=True)
-    # data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
-    #                              drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers,
-    #                              pin_memory=True)
+    data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
+                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers,
+                                 pin_memory=True)
 
     # lr_backbone_names = ["backbone.0", "backbone.neck", "input_proj", "transformer.encoder"]
     def match_name_keywords(n, name_keywords):
@@ -294,21 +292,21 @@ def main(args):
             lr_scheduler.step(lr_scheduler.last_epoch)
             args.start_epoch = checkpoint['epoch'] + 1
         # check the resumed model
-        # if (not args.eval and not args.viz and args.dataset in ['coco', 'voc']):
-        #     test_stats, coco_evaluator = evaluate(
-        #         model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
-        #     )
+        if (not args.eval and not args.viz and args.dataset in ['coco', 'voc']):
+            test_stats, coco_evaluator = evaluate(
+                model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
+            )
     
-    # if args.eval:
-    #     test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
-    #                                           data_loader_val, base_ds, device, args.output_dir)
-    #     if args.output_dir:
-    #         utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
-    #     return
+    if args.eval:
+        test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
+                                              data_loader_val, base_ds, device, args.output_dir)
+        if args.output_dir:
+            utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
+        return
 
-    # if args.viz:
-    #     viz(model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir)
-    #     return
+    if args.viz:
+        viz(model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir)
+        return
 
 
     print("Start training")
@@ -333,10 +331,9 @@ def main(args):
                     'args': args,
                 }, checkpoint_path)
         if args.dataset in ['coco', 'voc'] and epoch % args.eval_every == 0:
-            # test_stats, coco_evaluator = evaluate(
-            #     model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
-            # )
-            test_stats = {}
+            test_stats, coco_evaluator = evaluate(
+                model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
+            )
         else:
             test_stats = {}
 
@@ -350,15 +347,15 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
 
             # for evaluation logs
-            # if 'imagenet' not in args.dataset and coco_evaluator is not None:
-            #     (output_dir / 'eval').mkdir(exist_ok=True)
-            #     if "bbox" in coco_evaluator.coco_eval:
-            #         filenames = ['latest.pth']
-            #         if epoch % 50 == 0:
-            #             filenames.append(f'{epoch:03}.pth')
-            #         for name in filenames:
-            #             torch.save(coco_evaluator.coco_eval["bbox"].eval,
-            #                        output_dir / "eval" / name)
+            if 'imagenet' not in args.dataset and coco_evaluator is not None:
+                (output_dir / 'eval').mkdir(exist_ok=True)
+                if "bbox" in coco_evaluator.coco_eval:
+                    filenames = ['latest.pth']
+                    if epoch % 50 == 0:
+                        filenames.append(f'{epoch:03}.pth')
+                    for name in filenames:
+                        torch.save(coco_evaluator.coco_eval["bbox"].eval,
+                                   output_dir / "eval" / name)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -377,7 +374,7 @@ def get_datasets(args):
         dataset_val = build_dataset(image_set='val', args=args)
     elif args.dataset == 'imagenet100':
         dataset_train = build_selfdet('train', args=args, p=os.path.join(args.imagenet100_path, 'train'))
-        build_dataset(image_set='val', args=args)
+        dataset_val = build_dataset(image_set='val', args=args)
     elif args.dataset == 'voc':
         dataset_train = VOCDetection(args.voc_path, ["2007", "2012"], image_sets=['trainval', 'trainval'],
                                      transforms=make_coco_transforms('train'))
