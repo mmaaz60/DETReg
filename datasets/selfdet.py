@@ -16,6 +16,7 @@ from PIL import ImageFilter
 import random
 import cv2
 from util.box_ops import crop_bbox
+import pickle
 
 
 def get_random_patch_from_img(img, min_pixel=8):
@@ -40,7 +41,8 @@ class SelfDet(Dataset):
     The format of the bounding box is same to COCO.
     """
 
-    def __init__(self, root, detection_transform, query_transform, cache_dir=None, max_prop=30, strategy='topk'):
+    def __init__(self, root, detection_transform, query_transform, cache_dir=None, max_prop=30, strategy='topk',
+                 pseudo_labels=''):
         super(SelfDet, self).__init__()
         self.strategy = strategy
         self.cache_dir = cache_dir
@@ -50,6 +52,7 @@ class SelfDet(Dataset):
         self.detection_transform = detection_transform
         self.files = []
         self.dist2 = -np.log(np.arange(1, 301) / 301) / 10
+        self.pseudo_labels = pseudo_labels
         max_prob = (-np.log(1 / 1001)) ** 4
 
         for (troot, _, files) in os.walk(root, followlinks=True):
@@ -59,6 +62,12 @@ class SelfDet(Dataset):
                     self.files.append(path)
                 else:
                     continue
+        if self.pseudo_labels in ['mdetr', 'mdef_detr']:
+            # Load mdetr or mdef_detr boxes
+            pseudo_dets_dets_file_path = f"{root}_{self.pseudo_labels}_dets.pkl"
+            self.pseudo_dets = {}
+            with open(pseudo_dets_dets_file_path, "rb") as f:
+                self.pseudo_dets = pickle.load(f)
         print(f'num of files:{len(self.files)}')
 
     def __len__(self):
@@ -70,8 +79,13 @@ class SelfDet(Dataset):
         w, h = img.size
 
         if self.strategy == 'topk':
-            boxes = self.load_from_cache(item, img, h, w)
-            boxes = boxes[:self.max_prop]
+            if self.pseudo_labels in ['mdetr', 'mdef_detr']:
+                boxes, _ = self.pseudo_dets[f"{os.path.basename(img_path).split('.')[0]}"]
+                boxes = boxes[:self.max_prop]
+                boxes = boxes * np.array([w, h, w, h])
+            else:  # selective search
+                boxes = self.load_from_cache(item, img, h, w)
+                boxes = boxes[:self.max_prop]
         elif self.strategy == 'mc':
             boxes = self.load_from_cache(item, img, h, w)
             boxes_indicators = np.where(np.random.binomial(1, p=self.dist2[:len(boxes)]))[0]
@@ -96,7 +110,7 @@ class SelfDet(Dataset):
         patches = [img.crop([b[0], b[1], b[2], b[3]]) for b in boxes]
         target = {'orig_size': torch.as_tensor([int(h), int(w)]), 'size': torch.as_tensor([int(h), int(w)])}
         target['patches'] = torch.stack([self.query_transform(p) for p in patches], dim=0)
-        target['boxes'] = torch.tensor(boxes)
+        target['boxes'] = torch.tensor(boxes, dtype=torch.float32)
         target['iscrowd'] = torch.zeros(len(target['boxes']))
         target['area'] = target['boxes'][..., 2] * target['boxes'][..., 3]
         target['labels'] = torch.ones(len(target['boxes'])).long()
@@ -208,5 +222,6 @@ def get_query_transforms(image_set):
 
 
 def build_selfdet(image_set, args, p):
-    return SelfDet(p, detection_transform=make_self_det_transforms(image_set), query_transform=get_query_transforms(image_set), cache_dir=args.cache_path,
-                   max_prop=args.max_prop, strategy=args.strategy)
+    return SelfDet(p, detection_transform=make_self_det_transforms(image_set),
+                   query_transform=get_query_transforms(image_set), cache_dir=args.cache_path, max_prop=args.max_prop,
+                   strategy=args.strategy, pseudo_labels=args.pseudo_labels)
